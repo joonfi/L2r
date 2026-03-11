@@ -1,0 +1,86 @@
+
+Title: Drupal Local Full‑Stack (One‑Shot) — SUPER PROMPT
+Filename to save: drupal-one-shot-prompt
+Primary goal: Recreate a complete, production‑style **local/dev Drupal 10 stack** using Docker Compose from a single one‑shot script. Generate the exact repository structure and files described below. All services are for LOCAL/DEV only (no public exposure). The result must be reproducible by running the script once.
+
+## Outcomes
+1) A repository folder named **drupal-local-fullstack/** containing:
+   - **setup-drupal-local.sh** (executable one‑shot script)
+   - **README.md** (capabilities, quick start, flags, endpoints, why/when guidance)
+   - **CONTRIBUTING.md** (PR rules, quick guidelines)
+   - **CHANGELOG.md** (v1.0.0 entry)
+   - **UPGRADE_AND_KNOWN_ISSUES.md** (Upgrade Path + Known Issues)
+   - **LICENSE** (MIT by default)
+   - **SECURITY.md**, **CODE_OF_CONDUCT.md**, **security.txt**
+   - **.gitignore**, **.gitattributes**
+   - **.github/** with **CODEOWNERS**, **dependabot.yml**, **pull_request_template.md**, **ISSUE_TEMPLATE/** (bug_report, feature_request), **workflows/** (codeql.yml)
+   - **drupal-one-shot-prompt** (THIS file, the super prompt)
+
+2) A stack that runs with `docker compose` and creates **drupal-platform/** at first run containing:
+   - **docker-compose.yml**
+   - **.env** with random credentials
+   - **drupal/** (Dockerfile + install.sh)
+   - **nginx/default.conf**
+   - **proxysql/proxysql.cnf**
+   - **monitoring/prometheus.yml**
+   - **db/init/** and **db/replica-init/** with replication bootstrapping
+   - **backups/**
+   - Makefile
+
+## One‑shot script: setup-drupal-local.sh (REQUIREMENTS)
+- Shebang: `#!/usr/bin/env bash`; `set -Eeuo pipefail`.
+- Usage: `./setup-drupal-local.sh [--check-ports] [--add-hosts] [--ports SPEC] [domain]`.
+- Flags:
+  - `--check-ports` → silently verify host ports are free; fail with guidance if conflicts.
+  - `--add-hosts` → add `127.0.0.1 <domain>` to `/etc/hosts` if not present (sudo if needed).
+  - `--ports SPEC` → host port overrides; 
+    *CSV:* `web,traefik,grafana,prometheus,loki` or 
+    *pairs:* `web=,traefik=,grafana=,prometheus=,loki=`.
+- Defaults:
+  - Domain: `drupal.local`
+  - Ports: web=80, traefik_dashboard=8080, grafana=3000, prometheus=9090, loki=3100
+- Preconditions: require `docker`, `docker compose v2`, `openssl`; warn if `make` missing.
+- Create project folder **drupal-platform/** with subfolders: `nginx`, `traefik`, `proxysql`, `monitoring`, `backups`, `db/init`, `db/replica-init`, `drupal`.
+- Generate **.env** once with random secrets: `DB_ROOT_PASS`, `DB_USER=drupal`, `DB_PASS`, `DB_NAME=drupal`, `REPL_USER=repl`, `REPL_PASS`, `REDIS_PASS`, plus `DOMAIN`, `SITE_NAME=drupal.local`, `ADMIN_USER=drupallocaladmin`, `ADMIN_PASS=drupallocaladminpass`, `ADMIN_MAIL=admin@example.com`, and Composer retry/env vars.
+- **Drupal image** (drupal/Dockerfile): base `drupal:10-fpm`; install `mariadb-client`, `netcat-openbsd`, dev tools; `pecl install redis` + `docker-php-ext-enable redis`; install Composer to `/usr/local/bin/composer`.
+- **Installer** (drupal/install.sh):
+  - Wait for `proxysql:6033` and `redis:6379` via `nc -z` loops.
+  - Verify PHP `redis` extension is loaded, else fail.
+  - Ensure Drush is present (Composer require if missing).
+  - If not installed, run `drush site:install standard` with DB URL `mysql://$DB_USER:$DB_PASS@proxysql:6033/$DB_NAME`, site/account params.
+  - Require **Redis**: `composer require drupal/redis`; `drush en -y redis`; append **Redis settings** block (PhpRedis, host `redis`, password from env, default cache → redis) into `sites/default/settings.php` if missing.
+  - Validate Redis connectivity with AUTH & `PING`, fail otherwise.
+- **Nginx** (nginx/default.conf): PHP‑FPM upstream `drupal:9000`; `try_files $uri /index.php?$query_string;` deny dotfiles; `client_max_body_size 64M`.
+- **DB replication**:
+  - `db/init/001-create-repl-user.sql`: create `${REPL_USER}`@'%' with replication privileges.
+  - `db/replica-init/010-configure-replication.sh`: waits for primary; configures GTID replication with `CHANGE MASTER TO ... MASTER_USE_GTID=slave_pos;` and `START SLAVE;`.
+- **ProxySQL** (proxysql/proxysql.cnf):
+  - Admin iface `0.0.0.0:6032`, MySQL iface `0.0.0.0:6033`.
+  - Servers: `db_primary` hostgroup=10, `db_replica` hostgroup=20.
+  - User `${DB_USER}` default_hostgroup=10; replication hostgroups map writer=10, reader=20.
+- **Prometheus** (monitoring/prometheus.yml): scrape `node_exporter:9100`, `cadvisor:8080`, interval 15s.
+- **docker-compose.yml**:
+  - Services: `traefik:v3` (docker provider, `--providers.docker.exposedbydefault=false`, entrypoint web on :80, dashboard **enabled for dev** and bound to `127.0.0.1:<traefik_port>`), `nginx`, `drupal`, `drupal_installer`, `proxysql`, `db_primary:mariadb:11`, `db_replica:mariadb:11`, `redis:7` (with `--requirepass`), `prometheus`, `grafana`, `loki:2.9.5`, `node_exporter`, `cadvisor:v0.49.1`, `backup` job with daily dumps and retention (keep 7 most recent).
+  - Healthchecks for MariaDB and Redis; all internal services on an `internal` network; Traefik exposes HTTP on host `${PORT_WEB}` and dashboard on `127.0.0.1:${PORT_TRAEFIK_DASH}:8080`.
+- **Makefile**: `help`, `up`, `down`, `ps`, `logs`, `installer-logs`, `tail SERVICE=...`, `open` (xdg-open/macOS open/WSL powershell Start-Process), `health` (db ping, redis PING, nginx -t), `drush CMD=...`, `scale DRUPAL_SCALE=...`, `env`, `urls`, `nuke`.
+- After `docker compose up -d --build`, print endpoint URLs.
+
+## README.md (REQUIREMENTS)
+Must include:
+- Summary of capabilities; Quick Start with `--check-ports --add-hosts` example; Script options and formats for `--ports`; default endpoints; Redis enforcement note; Make targets; “Why keep our one‑shot stack”; “Where Docker4Drupal is best”; “Where DDEV is best”.
+- New section: **Super Prompt** → explains that `drupal-one-shot-prompt` is included at repo root next to the script, and how to use it to regenerate the repo.
+
+## Governance & CI
+- `CONTRIBUTING.md` with short PR rules.
+- `SECURITY.md` (local/dev only, coordinated disclosure, supported versions table).
+- `CODE_OF_CONDUCT.md` (Contributor Covenant reference), `security.txt`.
+- `.github/` with CODEOWNERS (placeholders), PR/issue templates, Dependabot weekly for GH Actions, CodeQL workflow.
+
+## Acceptance Criteria
+- Running `chmod +x setup-drupal-local.sh && ./setup-drupal-local.sh --check-ports --add-hosts drupal.local` on a host with Docker + Compose v2 produces a working stack with Redis enforced, ProxySQL + MariaDB replication active, and Prometheus/Grafana/Loki collecting data.
+- All endpoints available on localhost with the configured ports.
+- Traefik dashboard enabled for dev and bound to 127.0.0.1.
+- `make health` prints OK.
+- Archives can be created as:
+  - `tar -czf drupal-local-fullstack-everything.tar.gz drupal-local-fullstack/`
+  - `zip -r drupal-local-fullstack-everything.zip drupal-local-fullstack/`
