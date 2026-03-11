@@ -251,7 +251,7 @@ This repository includes a **super prompt** file named `drupal-one-shot-prompt`,
 Use it with your preferred LLM to regenerate the entire project structure and one‑shot stack from scratch. 
 It describes required files, Compose topology, installer behavior, flags, and acceptance criteria.
 
-**Where:** `drupal-local-fullstack/drupal-one-shot-prompt`
+**Where:** `L2r/drupal-one-shot-prompt` or at the root of the repo
 
 **Tip:** Paste the super prompt into an AI assistant and ask it to generate the full repo on a clean machine; then run:
 ```bash
