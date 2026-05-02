@@ -212,7 +212,7 @@ This project intentionally goes beyond “just a Drupal dev environment”. It i
    - Options: `--check-ports`, `--add-hosts`, `--ports`.
    - Makefile helpers.
 
-**In short:** keep this stack when you want a **repeatable platform lab** that is close to “real infra” and not just an app sandbox.
+**In short:** keep this stack when you want a **repeatable platform lab or to practically learn how a reproducible production-designed system looked like**, that is a “real-world infrastructure” build and not just an app being hosted/operated in a sandbox.
 
 ---
 
@@ -236,10 +236,10 @@ Choose it when you want minimal friction for a mixed team and prefer CLI-driven 
 
 ---
 
-## Recommended usage pattern (best of both worlds)
+## Recommended usage pattern (best-in-class in the multiverse)
 
 - **Default team dev:** DDEV
-- **Platform lab / performance / infra validation:** this one-shot stack
+- **Platform lab / performance / infra validation:** 1-shot stack
 - **Compose-native Drupal stack preference:** Docker4Drupal
 
 
